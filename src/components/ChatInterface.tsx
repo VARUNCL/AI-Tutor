@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Message as MessageType, GradeLevel } from '../types';
+import { Message as MessageType, AnswerMode } from '../types';
 import Message from './Message';
 import Header from './Header';
 import ChatInput from './ChatInput';
@@ -8,25 +8,14 @@ import ChatHistorySidebar from './ChatHistorySidebar';
 import { useTheme } from '../hooks/useTheme';
 import { useChatHistory } from '../hooks/useChatHistory';
 
-const GRADE_LEVELS: GradeLevel[] = [
-  { value: 'grade-1', label: 'Grade 1' },
-  { value: 'grade-2', label: 'Grade 2' },
-  { value: 'grade-3', label: 'Grade 3' },
-  { value: 'grade-4', label: 'Grade 4' },
-  { value: 'grade-5', label: 'Grade 5' },
-  { value: 'grade-6', label: 'Grade 6' },
-  { value: 'grade-7', label: 'Grade 7' },
-  { value: 'grade-8', label: 'Grade 8' },
-  { value: 'grade-9', label: 'Grade 9' },
-  { value: 'grade-10', label: 'Grade 10' },
-  { value: 'grade-11', label: 'Grade 11' },
-  { value: 'grade-12', label: 'Grade 12' },
-  { value: 'college', label: 'College' },
-  { value: 'custom', label: 'Custom' },
-];
+// Removed grade levels
 
 const ChatInterface: React.FC = () => {
   const { isDark, toggleTheme } = useTheme();
+  const [inputValue, setInputValue] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [messages, setMessages] = useState<MessageType[]>([]);
+  const [mode, setMode] = useState<AnswerMode>('intermediate');
   const {
     sessions,
     currentSessionId,
@@ -37,18 +26,9 @@ const ChatInterface: React.FC = () => {
     updateSessionMessages,
     getCurrentSession,
     setCurrentSessionId,
-    toggleSidebar
+    toggleSidebar,
   } = useChatHistory();
-  
-  const [inputValue, setInputValue] = useState('');
-  const [selectedGrade, setSelectedGrade] = useState('grade-6');
-  const [isLoading, setIsLoading] = useState(false);
-  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-
-  // Get current session messages
-  const currentSession = getCurrentSession();
-  const messages = currentSession?.messages || [];
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -58,33 +38,119 @@ const ChatInterface: React.FC = () => {
     scrollToBottom();
   }, [messages, isLoading]);
 
-  const simulateAIResponse = async (userMessage: string, gradeLevel: string): Promise<string> => {
-    // Simulate API call delay
-    await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 2000));
+  // Sync current session messages into local state when session changes
+  useEffect(() => {
+    const session = getCurrentSession();
+    setMessages(session?.messages || []);
+  }, [currentSessionId]);
 
-    const gradeLabel = GRADE_LEVELS.find(g => g.value === gradeLevel)?.label || 'Grade 6';
-    
-    // Simulate different responses based on grade level
-    const responses = {
-      'grade-1': `Great question! Let me explain this in a simple way for ${gradeLabel}. `,
-      'grade-2': `Nice question! Here's how I can help you understand this for ${gradeLabel}. `,
-      'grade-3': `Good thinking! Let me break this down for ${gradeLabel} level. `,
-      'college': `Excellent question! Here's a comprehensive explanation suitable for college level. `,
-      'custom': `Let me provide a detailed explanation tailored to your learning level. `,
-    };
+  // Keep session storage updated when local messages change
+  useEffect(() => {
+    if (!currentSessionId) return;
+    updateSessionMessages(currentSessionId, messages);
+  }, [messages]);
 
-    const prefix = responses[gradeLevel as keyof typeof responses] || responses['grade-6'];
-    
-    return `${prefix}Based on your question about "${userMessage}", I can help you understand this concept better. This is a simulated AI response that would normally come from an AI API like OpenAI. The response would be tailored to the ${gradeLabel} level and provide educational content appropriate for that learning stage.`;
+  // Remove Markdown formatting and bullets for a clean UI display
+  const sanitizeAnswer = (text: string): string => {
+    let out = text;
+    // Bold/italic markers
+    out = out.replace(/\*\*(.*?)\*\*/g, '$1');
+    out = out.replace(/__(.*?)__/g, '$1');
+    out = out.replace(/\*(.*?)\*/g, '$1');
+    // Heading markers (#, ##, ### ...)
+    out = out.replace(/^\s*#{1,6}\s+/gm, '');
+    // Horizontal rules (--- or ___)
+    out = out.replace(/^\s*[-_]{3,}\s*$/gm, '');
+    // Bulleted lists (-, –, —, •)
+    out = out.replace(/^[\t ]*[\-–—•]\s+/gm, '');
+    // Ordered lists (1. 2) 3:)
+    out = out.replace(/^\s*\d+[)\.:]\s+/gm, '');
+    // Collapse extra blank lines
+    out = out.replace(/\n{3,}/g, '\n\n').trim();
+    return out;
+  };
+
+  // Call backend API and strip any <think>...</think> blocks, return only the answer text
+  const fetchAIAnswer = async (question: string): Promise<{ cleaned: string; raw: any }> => {
+    const API_BASE = 'http://185.136.234.250:5001';
+    const url = `${API_BASE}/ask`;
+    const maxAttempts = 3;
+
+    let lastError: any = null;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
+      try {
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            question,
+            mode: 'enhanced',
+            student_level: mode === 'easy' ? 0.4 : mode === 'intermediate' ? 0.6 : 1,
+            max_concepts: 5,
+          }),
+          signal: controller.signal,
+        });
+
+        let data: any = null;
+        try {
+          data = await response.json();
+          console.log(data);
+        } catch (parseError) {
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+          }
+          throw new Error('Invalid JSON response from AI service');
+        }
+
+        if (!response.ok) {
+          const serverMsg = data?.error || data?.message || `HTTP ${response.status}: ${response.statusText}`;
+          throw new Error(serverMsg);
+        }
+
+        if (data?.success === false) {
+          const aiError = data?.error || data?.message || 'AI returned an error';
+          throw new Error(aiError);
+        }
+
+        const rawAnswer: string = data?.response?.answer ?? '';
+        if (!rawAnswer) {
+          throw new Error('Empty answer from AI');
+        }
+
+        const withoutThink = rawAnswer.replace(/<think>[\s\S]*?<\/think>\n?/g, '').trim();
+        const cleaned = sanitizeAnswer(withoutThink);
+        if (!cleaned) {
+          throw new Error('Empty answer after sanitization');
+        }
+        clearTimeout(timeoutId);
+        return { cleaned, raw: data };
+      } catch (error: any) {
+        clearTimeout(timeoutId);
+        lastError = error;
+        const msg = (error?.message || '').toLowerCase();
+        const isConnRefused = msg.includes('failed to fetch') || msg.includes('err_connection_refused') || msg.includes('network error') || msg.includes('abort');
+        if (attempt < maxAttempts && isConnRefused) {
+          const backoffMs = 500 * attempt;
+          await new Promise(r => setTimeout(r, backoffMs));
+          continue;
+        }
+        // Re-throw on last attempt or non-retryable error
+        throw new Error(isConnRefused ? 'Service unavailable (connection refused). Please try again shortly.' : (error?.message || 'Unknown error'));
+      }
+    }
+    throw lastError || new Error('Unknown error');
   };
 
   const handleSendMessage = async () => {
     if (!inputValue.trim()) return;
 
-    // Create new session if none exists
+    // Ensure a session exists for history view (frontend-only)
     let sessionId = currentSessionId;
     if (!sessionId) {
       sessionId = createNewSession();
+      setCurrentSessionId(sessionId);
     }
 
     const userMessage: MessageType = {
@@ -92,63 +158,66 @@ const ChatInterface: React.FC = () => {
       content: inputValue,
       sender: 'user',
       timestamp: new Date(),
-      gradeLevel: GRADE_LEVELS.find(g => g.value === selectedGrade)?.label,
     };
 
     const updatedMessages = [...messages, userMessage];
-    updateSessionMessages(sessionId, updatedMessages);
+    setMessages(updatedMessages);
     setInputValue('');
     setIsLoading(true);
 
     try {
-      // In a real application, this would be an actual API call:
-      // const response = await fetch('/api/chat', {
-      //   method: 'POST',
-      //   headers: { 'Content-Type': 'application/json' },
-      //   body: JSON.stringify({ message: inputValue, gradeLevel: selectedGrade })
-      // });
-      // const data = await response.json();
-      
-      const aiResponseContent = await simulateAIResponse(inputValue, selectedGrade);
+      const { cleaned: aiResponseContent, raw: aiRaw } = await fetchAIAnswer(inputValue);
       
       const aiMessage: MessageType = {
         id: (Date.now() + 1).toString(),
         content: aiResponseContent,
         sender: 'ai',
         timestamp: new Date(),
+        isError: false,
+        aiResponse: aiRaw,
       };
 
       const finalMessages = [...updatedMessages, aiMessage];
-      updateSessionMessages(sessionId, finalMessages);
-    } catch (error) {
+      setMessages(finalMessages);
+    } catch (error: any) {
       console.error('Error sending message:', error);
-      const errorMessage: MessageType = {
+      const aiErrorDetail: MessageType = {
         id: (Date.now() + 1).toString(),
-        content: 'Sorry, I encountered an error. Please try again.',
+        content: (error?.message || 'Unknown error from AI').toString(),
         sender: 'ai',
         timestamp: new Date(),
+        isError: true,
       };
-      const finalMessages = [...updatedMessages, errorMessage];
-      updateSessionMessages(sessionId, finalMessages);
+      const aiErrorNotice: MessageType = {
+        id: (Date.now() + 2).toString(),
+        content: 'Failed to load the query.',
+        sender: 'ai',
+        timestamp: new Date(),
+        isError: true,
+      };
+      const finalMessages = [...updatedMessages, aiErrorDetail, aiErrorNotice];
+      setMessages(finalMessages);
     } finally {
       setIsLoading(false);
     }
   };
 
   const handleReset = () => {
-    if (currentSessionId) {
-      updateSessionMessages(currentSessionId, []);
-    }
+    setMessages([]);
     setInputValue('');
   };
 
   const handleNewSession = () => {
-    createNewSession();
+    const newId = createNewSession();
+    setCurrentSessionId(newId);
+    setMessages([]);
     setInputValue('');
   };
 
   const handleSessionSelect = (sessionId: string) => {
     setCurrentSessionId(sessionId);
+    const session = sessions.find(s => s.id === sessionId);
+    setMessages(session?.messages || []);
     setInputValue('');
   };
 
@@ -172,11 +241,9 @@ const ChatInterface: React.FC = () => {
       <Header
         isDark={isDark}
         toggleTheme={toggleTheme}
-        selectedGrade={selectedGrade}
-        setSelectedGrade={setSelectedGrade}
         onReset={handleReset}
-        isDropdownOpen={isDropdownOpen}
-        setIsDropdownOpen={setIsDropdownOpen}
+        mode={mode}
+        setMode={setMode}
       />
 
         {/* Messages Area */}

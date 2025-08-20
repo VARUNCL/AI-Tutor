@@ -82,19 +82,36 @@ export const useChatHistory = () => {
   };
 
   const updateSessionMessages = (sessionId: string, messages: Message[]) => {
-    setSessions(prev => prev.map(session => 
-      session.id === sessionId 
-        ? { 
-            ...session, 
-            messages,
-            lastMessage: messages.length > 0 ? messages[messages.length - 1].content : '',
-            timestamp: new Date(),
-            title: session.title === 'New Chat' && messages.length > 0 
-              ? messages[0].content.substring(0, 30) + (messages[0].content.length > 30 ? '...' : '')
-              : session.title
-          }
-        : session
-    ));
+    setSessions(prev => {
+      const index = prev.findIndex(s => s.id === sessionId);
+      if (index === -1) {
+        // If the session does not exist yet (race condition), create it now
+        const newSession: ChatSession = {
+          id: sessionId,
+          title: messages.length > 0
+            ? messages[0].content.substring(0, 30) + (messages[0].content.length > 30 ? '...' : '')
+            : 'New Chat',
+          lastMessage: messages.length > 0 ? messages[messages.length - 1].content : '',
+          timestamp: new Date(),
+          messages,
+        };
+        return [newSession, ...prev];
+      }
+
+      return prev.map(session => 
+        session.id === sessionId 
+          ? { 
+              ...session, 
+              messages,
+              lastMessage: messages.length > 0 ? messages[messages.length - 1].content : '',
+              timestamp: new Date(),
+              title: session.title === 'New Chat' && messages.length > 0 
+                ? messages[0].content.substring(0, 30) + (messages[0].content.length > 30 ? '...' : '')
+                : session.title
+            }
+          : session
+      );
+    });
   };
 
   const getCurrentSession = (): ChatSession | null => {

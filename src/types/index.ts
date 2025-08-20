@@ -3,19 +3,18 @@ export interface Message {
   content: string;
   sender: 'user' | 'ai';
   timestamp: Date;
-  gradeLevel?: string;
+  isError?: boolean;
+  aiResponse?: unknown;
 }
+
+export type AnswerMode = 'easy' | 'intermediate' | 'advance';
 
 export interface ChatState {
   messages: Message[];
   isLoading: boolean;
-  selectedGrade: string;
 }
 
-export type GradeLevel = {
-  value: string;
-  label: string;
-};
+// Removed grade level types and state
 
 export interface ChatSession {
   id: string;
@@ -29,4 +28,4 @@ export interface SidebarState {
   isOpen: boolean;
   sessions: ChatSession[];
   currentSessionId: string | null;
-}</parameter>
+}

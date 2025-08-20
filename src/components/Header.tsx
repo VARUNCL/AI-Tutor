@@ -1,42 +1,21 @@
 import React from 'react';
-import { Moon, Sun, RotateCcw, ChevronDown, Brain } from 'lucide-react';
-import { GradeLevel } from '../types';
-
-const GRADE_LEVELS: GradeLevel[] = [
-  { value: 'grade-1', label: 'Grade 1' },
-  { value: 'grade-2', label: 'Grade 2' },
-  { value: 'grade-3', label: 'Grade 3' },
-  { value: 'grade-4', label: 'Grade 4' },
-  { value: 'grade-5', label: 'Grade 5' },
-  { value: 'grade-6', label: 'Grade 6' },
-  { value: 'grade-7', label: 'Grade 7' },
-  { value: 'grade-8', label: 'Grade 8' },
-  { value: 'grade-9', label: 'Grade 9' },
-  { value: 'grade-10', label: 'Grade 10' },
-  { value: 'grade-11', label: 'Grade 11' },
-  { value: 'grade-12', label: 'Grade 12' },
-  { value: 'college', label: 'College' },
-  { value: 'custom', label: 'Custom' },
-];
+import { Moon, Sun, RotateCcw, Brain } from 'lucide-react';
+import { AnswerMode } from '../types';
 
 interface HeaderProps {
   isDark: boolean;
   toggleTheme: () => void;
-  selectedGrade: string;
-  setSelectedGrade: (grade: string) => void;
   onReset: () => void;
-  isDropdownOpen: boolean;
-  setIsDropdownOpen: (open: boolean) => void;
+  mode: AnswerMode;
+  setMode: (m: AnswerMode) => void;
 }
 
 const Header: React.FC<HeaderProps> = ({
   isDark,
   toggleTheme,
-  selectedGrade,
-  setSelectedGrade,
   onReset,
-  isDropdownOpen,
-  setIsDropdownOpen,
+  mode,
+  setMode,
 }) => {
   return (
     <header className="sticky top-0 z-40 bg-white/80 dark:bg-gray-900/80 backdrop-blur-md border-b border-gray-200 dark:border-gray-700">
@@ -52,39 +31,17 @@ const Header: React.FC<HeaderProps> = ({
 
           {/* Controls */}
           <div className="flex items-center space-x-2">
-            {/* Grade Level Selector */}
-            <div className="relative">
-              <button
-                onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                className="px-3 py-2 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg flex items-center space-x-2 transition-colors duration-200 text-sm"
-              >
-                <span className="font-medium text-gray-700 dark:text-gray-300">
-                  {GRADE_LEVELS.find(g => g.value === selectedGrade)?.label}
-                </span>
-                <ChevronDown size={14} className={`transform transition-transform duration-200 ${isDropdownOpen ? 'rotate-180' : ''}`} />
-              </button>
-              
-              {isDropdownOpen && (
-                <div className="absolute top-full right-0 mt-1 w-32 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 z-50 max-h-48 overflow-y-auto">
-                  {GRADE_LEVELS.map((grade) => (
-                    <button
-                      key={grade.value}
-                      onClick={() => {
-                        setSelectedGrade(grade.value);
-                        setIsDropdownOpen(false);
-                      }}
-                      className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors duration-150 ${
-                        selectedGrade === grade.value 
-                          ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400' 
-                          : 'text-gray-900 dark:text-gray-100'
-                      }`}
-                    >
-                      {grade.label}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
+            {/* Mode Selector */}
+            <select
+              value={mode}
+              onChange={(e) => setMode(e.target.value as AnswerMode)}
+              className="px-2 py-2 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors duration-200 text-sm text-gray-800 dark:text-gray-200"
+              title="Answer mode"
+            >
+              <option value="easy">Easy</option>
+              <option value="intermediate">Intermediate</option>
+              <option value="advance">Advance</option>
+            </select>
 
             {/* Reset Button */}
             <button
